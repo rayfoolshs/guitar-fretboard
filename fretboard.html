@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guitar Fretboard — Portrait + Chord ID</title>
+<style>
+  :root {
+    --wood: #ffffff;
+    --wood-light: #f5f5f5;
+    --fret: #cfcfcf;
+    --string: #b0b0b0;
+    --ink: #1c1a17;
+    --note: #ffffff;
+    --accent: #e0a458;
+    --accent-dark: #8a5a30;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 20px 48px;
+    background: #f7f3ec;
+    color: var(--ink);
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; letter-spacing: .3px; }
+  p.sub { margin: 0 0 22px; font-size: 13px; color: #6f665a; text-align: center; }
+  .controls { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; justify-content: center; }
+  button {
+    font: inherit; font-size: 13px;
+    padding: 7px 14px; border-radius: 999px;
+    border: 1px solid #d5cbbd; background: #fff; color: var(--ink);
+    cursor: pointer; transition: all .15s ease;
+  }
+  button:hover { border-color: var(--accent); }
+  button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  button.ghost { color: #8a5a30; }
+  .pill {
+    font-size: 13px; padding: 7px 14px; border-radius: 999px;
+    background: var(--ink); border: 1px solid var(--ink); color: #fff;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid #e6ded1;
+    border-radius: 14px;
+    padding: 22px 26px 14px;
+    box-shadow: 0 6px 24px rgba(60,45,25,.08);
+    max-width: 100%;
+  }
+  svg { display: block; width: 100%; height: auto; max-width: 420px; }
+  .fret-num { font-size: 13px; fill: #6f665a; font-weight: 600; }
+  .open-label { font-size: 13px; fill: #6f665a; font-weight: 600; }
+  .note-text { font-size: 13px; font-weight: 700; fill: var(--ink); pointer-events: none; }
+  .note-dot { fill: var(--note); stroke: #c2c2c2; stroke-width: 1; cursor: pointer; }
+  .note-dot:hover { stroke: var(--accent-dark); stroke-width: 2; }
+  .note-dot.sel { fill: var(--accent); stroke: var(--accent-dark); stroke-width: 2; }
+
+  .readout {
+    margin-top: 20px; width: 100%; max-width: 420px;
+    background: #fff; border: 1px solid #e6ded1; border-radius: 14px;
+    padding: 18px 22px; box-shadow: 0 6px 24px rgba(60,45,25,.08);
+  }
+  .chord-name { font-size: 30px; font-weight: 700; letter-spacing: .5px; line-height: 1.1; }
+  .chord-name .slash { color: #8a5a30; }
+  .chord-name.empty { font-size: 15px; font-weight: 500; color: #9a9080; }
+  .chord-qual { font-size: 13px; color: #6f665a; margin-top: 4px; }
+  .chord-row { font-size: 13px; margin-top: 10px; display: flex; gap: 10px; align-items: baseline; }
+  .chord-row .k { color: #9a9080; min-width: 66px; }
+  .chord-row .v { font-weight: 600; letter-spacing: .5px; }
+  .chord-row .v .deg { color: #8a5a30; font-weight: 500; }
+  .chord-alt { font-size: 12.5px; color: #6f665a; margin-top: 12px; border-top: 1px dashed #e6ded1; padding-top: 10px; }
+  footer { margin-top: 18px; font-size: 12px; color: #8b8175; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>Guitar Fretboard</h1>
+  <p class="sub">6 strings &middot; 5 frets &middot; standard tuning (E A D G B E)<br>
+     Left-click a note to add it &middot; right-click a string to mute it (not played)</p>
+
+  <div class="controls">
+    <span class="pill">Note names</span>
+    <button id="btnMarker" aria-pressed="true">Fret markers</button>
+    <button id="btnClear" class="ghost">Clear</button>
+  </div>
+
+  <div class="card">
+    <svg id="fretboard" viewBox="0 0 400 620" role="img"
+         aria-label="Portrait guitar fretboard diagram with 6 strings and 5 frets"></svg>
+  </div>
+
+  <div class="readout" id="readout">
+    <div class="chord-name empty" id="rName">No notes selected</div>
+    <div class="chord-qual" id="rQual">Click notes on the fretboard to identify the chord.</div>
+    <div id="rRows"></div>
+    <div class="chord-alt hidden" id="rAlt"></div>
+  </div>
+
+  <footer><b>x</b> = muted string &middot; <b>–</b> = not used &middot; print-friendly</footer>
+
+<script>
+// ---------- Configuration ----------
+const FRETS = 5;
+const TUNING = ["E","A","D","G","B","E"];         // low -> high
+const OPEN_MIDI = [40,45,50,55,59,64];            // E2 A2 D3 G3 B3 E4
+const SHARP = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const FLAT  = ["C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B"];
+
+// Note names per string, low string first, open -> fret 5
+const STRINGS = TUNING.map(open => {
+  const start = SHARP.indexOf(open);
+  return Array.from({length: FRETS + 1}, (_, f) => SHARP[(start + f) % 12]);
+});
+
+// ---------- Chord templates (intervals from root, ascending) ----------
+// Order = tie-break priority (common chords first).
+const CHORDS = [
+  { sym:"",      name:"major",            iv:[0,4,7] },
+  { sym:"m",     name:"minor",            iv:[0,3,7] },
+  { sym:"7",     name:"dominant 7th",     iv:[0,4,7,10] },
+  { sym:"maj7",  name:"major 7th",        iv:[0,4,7,11] },
+  { sym:"m7",    name:"minor 7th",        iv:[0,3,7,10] },
+  { sym:"7",     name:"dominant 7th (no 5th)", iv:[0,4,10] },
+  { sym:"maj7",  name:"major 7th (no 5th)",    iv:[0,4,11] },
+  { sym:"m7",    name:"minor 7th (no 5th)",    iv:[0,3,10] },
+  { sym:"m7b5",  name:"minor 7th flat 5", iv:[0,3,6,10] },
+  { sym:"dim7",  name:"diminished 7th",   iv:[0,3,6,9] },
+  { sym:"dim",   name:"diminished",       iv:[0,3,6] },
+  { sym:"aug",   name:"augmented",        iv:[0,4,8] },
+  { sym:"sus2",  name:"suspended 2nd",    iv:[0,2,7] },
+  { sym:"sus4",  name:"suspended 4th",    iv:[0,5,7] },
+  { sym:"5",     name:"power chord",      iv:[0,7] },
+  { sym:"mMaj7", name:"minor-major 7th",  iv:[0,3,7,11] },
+  { sym:"7#5",   name:"augmented 7th",    iv:[0,4,8,10] },
+  { sym:"m6",    name:"minor 6th",        iv:[0,3,7,9] },
+  { sym:"6",     name:"major 6th",        iv:[0,4,7,9] },
+  { sym:"6",     name:"major 6th (no 5th)", iv:[0,4,9] },
+  { sym:"add9",  name:"major add 9",      iv:[0,2,4,7] },
+  { sym:"madd9", name:"minor add 9",      iv:[0,2,3,7] },
+  { sym:"9",     name:"dominant 9th",     iv:[0,2,4,7,10] },
+  { sym:"9",     name:"dominant 9th (no 5th)", iv:[0,2,4,10] },
+  { sym:"maj9",  name:"major 9th",        iv:[0,2,4,7,11] },
+  { sym:"maj9",  name:"major 9th (no 5th)",    iv:[0,2,4,11] },
+  { sym:"m9",    name:"minor 9th",        iv:[0,2,3,7,10] },
+  { sym:"m9",    name:"minor 9th (no 5th)",    iv:[0,2,3,10] },
+  { sym:"6/9",   name:"six-nine",         iv:[0,2,4,7,9] },
+  { sym:"7sus4", name:"dominant 7 sus 4", iv:[0,5,7,10] },
+];
+
+const DEGREE = ["1","b2","2","b3","3","4","b5","5","b6","6","b7","7"];
+const INVERSION = ["root position","1st inversion","2nd inversion","3rd inversion","4th inversion"];
+const INTERVAL = ["unison","minor 2nd","major 2nd","minor 3rd","major 3rd","perfect 4th",
+                  "tritone","perfect 5th","minor 6th","major 6th","minor 7th","major 7th"];
+
+// ---------- Layout (portrait: strings vertical, frets horizontal) ----------
+const LEFT = 110, TOP = 100, COL = 40, FRET_H = 92, PAD = 28, NUT = 7;
+const W = COL * (TUNING.length - 1);
+const H = FRET_H * FRETS;
+const xOf = i => LEFT + i * COL;         // i: 0 = low E (left) .. 5 = high E (right)
+const yOf = f => TOP + f * FRET_H;       // f: 0 = nut .. 5 = last fret
+const boardL = LEFT - PAD, boardR = LEFT + W + PAD;
+const boardT = TOP - NUT, boardB = TOP + H + PAD;
+const midX = (boardL + boardR) / 2;
+
+const svg = document.getElementById("fretboard");
+const NS = "http://www.w3.org/2000/svg";
+const el = (name, attrs = {}, parent = svg) => {
+  const n = document.createElementNS(NS, name);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  parent.appendChild(n);
+  return n;
+};
+
+// ---------- State ----------
+const selection = new Map();   // stringIndex -> fret (strings being played)
+const muted = new Set();       // stringIndex -> not played (right-click)
+let showMarkers = true;
+
+// ---------- Static fretboard ----------
+function drawBoard() {
+  el("rect", { x: boardL, y: boardT, width: boardR - boardL, height: boardB - boardT, rx: 6,
+               fill: "var(--wood)", stroke: "#dedede", "stroke-width": 1 });
+
+  for (let f = 1; f <= FRETS; f++) {
+    el("line", { x1: boardL, y1: yOf(f), x2: boardR, y2: yOf(f),
+                 stroke: "var(--fret)", "stroke-width": f === FRETS ? 3 : 2 });
+  }
+  el("rect", { x: boardL, y: TOP - NUT, width: boardR - boardL, height: NUT, fill: "#e2e2e2" });
+
+  for (let f = 1; f <= FRETS; f++) {
+    el("text", { x: boardR + 18, y: yOf(f) - FRET_H / 2 + 5, "text-anchor": "middle", class: "fret-num" }).textContent = f;
+  }
+  el("text", { x: boardR + 18, y: TOP - 34, "text-anchor": "middle", class: "fret-num" }).textContent = "Fret";
+
+  for (let i = 0; i < TUNING.length; i++) {
+    const w = 1 + ((TUNING.length - 1 - i) * 0.55);
+    const off = muted.has(i);
+    el("line", { x1: xOf(i), y1: boardT, x2: xOf(i), y2: boardB,
+                 stroke: off ? "#e2e2e2" : "var(--string)", "stroke-width": w,
+                 "stroke-linecap": "round", ...(off ? { "stroke-dasharray": "3 5" } : {}) });
+  }
+  for (let i = 0; i < TUNING.length; i++) {
+    el("text", { x: xOf(i), y: TOP - 40, "text-anchor": "middle", class: "open-label" }).textContent = TUNING[i];
+    el("text", { x: xOf(i), y: TOP - 58, "text-anchor": "middle", class: "string-num" }).textContent = (6 - i) + "s";
+  }
+}
+
+// ---------- Fret markers (3, 5) ----------
+function drawMarkers() {
+  const g = el("g");
+  [3, 5].forEach(f => el("circle", { cx: midX, cy: yOf(f) - FRET_H / 2, r: 7, fill: "#dcdcdc", opacity: .9 }, g));
+}
+
+// ---------- Muted strings (right-click) ----------
+function drawMutes() {
+  if (!muted.size) return;
+  const g = el("g");
+  muted.forEach(i => {
+    const cx = xOf(i), cy = TOP - NUT - 20, r = 7;
+    el("line", { x1: cx - r, y1: cy - r, x2: cx + r, y2: cy + r, stroke: "#8a8175", "stroke-width": 2.5, "stroke-linecap": "round" }, g);
+    el("line", { x1: cx - r, y1: cy + r, x2: cx + r, y2: cy - r, stroke: "#8a8175", "stroke-width": 2.5, "stroke-linecap": "round" }, g);
+  });
+}
+
+// ---------- Notes ----------
+function drawNotes() {
+  const g = el("g");
+  for (let i = 0; i < TUNING.length; i++) {
+    for (let f = 0; f <= FRETS; f++) {
+      if (f === 0 && muted.has(i)) continue;   // muted string: show an x, not an open note
+      const cx = xOf(i);
+      const cy = f === 0 ? TOP - NUT - 20 : yOf(f) - FRET_H / 2;
+      const isSel = selection.get(i) === f;
+      const dot = el("circle", { cx, cy, r: 11, class: "note-dot" + (isSel ? " sel" : "") }, g);
+      el("text", { x: cx, y: cy + 4.5, "text-anchor": "middle", class: "note-text" }, g)
+        .textContent = noteLabel(i, f);
+      dot.addEventListener("click", () => toggleNote(i, f));
+    }
+  }
+}
+
+function noteLabel(i, f) {
+  const n = STRINGS[i][f];
+  return n.includes("#") ? FLAT[SHARP.indexOf(n)] : n;
+}
+
+// ---------- Interaction ----------
+function toggleNote(s, f) {
+  if (selection.get(s) === f) selection.delete(s);
+  else { selection.set(s, f); muted.delete(s); }   // one note per string; playing a note un-mutes it
+  render();
+}
+
+function toggleMute(s) {
+  if (muted.has(s)) muted.delete(s);
+  else { muted.add(s); selection.delete(s); }      // a muted string isn't played
+  render();
+}
+
+// Chord-diagram notation: fret number | x = muted | - = not used
+function voicingString() {
+  return [0,1,2,3,4,5]
+    .map(i => selection.has(i) ? String(selection.get(i)) : (muted.has(i) ? "x" : "–"))
+    .join(" ");
+}
+
+// ---------- Chord analysis ----------
+function analyze() {
+  const picked = [...selection.entries()].map(([s, f]) => ({
+    s, f,
+    midi: OPEN_MIDI[s] + f,
+    pc: (OPEN_MIDI[s] + f) % 12
+  })).sort((a, b) => a.midi - b.midi);          // low -> high pitch
+
+  if (picked.length === 0) return null;
+
+  const bass = picked[0];
+  const uniq = [...new Set(picked.map(n => n.pc))];
+  const matches = [];
+
+  for (const root of uniq) {
+    const ivs = uniq.map(pc => (pc - root + 12) % 12).sort((a, b) => a - b);
+    const key = ivs.join(",");
+    CHORDS.forEach((c, prio) => {
+      if (c.iv.join(",") === key) matches.push({ root, chord: c, ivs, prio });
+    });
+  }
+
+  // rank: prefer root-position (bass == root), then common chords
+  matches.sort((a, b) => {
+    const ra = (a.root === bass.pc ? 0 : 1) - (b.root === bass.pc ? 0 : 1);
+    return ra || (a.prio - b.prio);
+  });
+
+  return { picked, bass, uniq, matches };
+}
+
+// ---------- Readout ----------
+function updateReadout() {
+  const rName = document.getElementById("rName");
+  const rQual = document.getElementById("rQual");
+  const rRows = document.getElementById("rRows");
+  const rAlt  = document.getElementById("rAlt");
+  rRows.innerHTML = "";
+  rAlt.classList.add("hidden");
+
+  const a = analyze();
+  if (!a) {
+    rName.className = "chord-name empty";
+    rName.textContent = "No notes selected";
+    rQual.textContent = "Left-click notes to identify the chord · right-click to mute a string.";
+    return;
+  }
+
+  const { picked, bass, uniq, matches } = a;
+
+  // Voicing notation: string 6 -> string 1, fret or x
+  const voicing = voicingString();
+
+  // Single note
+  if (uniq.length === 1) {
+    rName.className = "chord-name";
+    rName.textContent = FLAT[bass.pc];
+    rQual.textContent = "Single note";
+    addRow(rRows, "Notes", FLAT[bass.pc]);
+    addRow(rRows, "Voicing", voicing);
+    addMutedRow(rRows);
+    return;
+  }
+
+  // Two notes without a template match: name the interval
+  if (!matches.length) {
+    rName.className = "chord-name";
+    rName.textContent = `${FLAT[bass.pc]} + ${FLAT[uniq.find(p => p !== bass.pc)]}`;
+    rQual.textContent = uniq.length === 2
+      ? `${INTERVAL[(uniq.find(p => p !== bass.pc) - bass.pc + 12) % 12]} — incomplete chord`
+      : "Unrecognized voicing";
+    addRow(rRows, "Notes", picked.map(n => FLAT[n.pc]).join(" "));
+    addRow(rRows, "Voicing", voicing);
+    addMutedRow(rRows);
+    return;
+  }
+
+  const best = matches[0];
+  const rootName = FLAT[best.root];
+  const bassIv = (bass.pc - best.root + 12) % 12;
+  const invIdx = best.chord.iv.indexOf(bassIv);
+  const slash = invIdx > 0 ? `<span class="slash">/${FLAT[bass.pc]}</span>` : "";
+
+  rName.className = "chord-name";
+  rName.innerHTML = `${rootName}${best.chord.sym}${slash}`;
+  rQual.textContent = `${rootName} ${best.chord.name} · ${INVERSION[invIdx]}` +
+                      (picked.length > uniq.length ? ` · ${picked.length} notes` : "");
+
+  // notes low -> high with scale degrees
+  const noteStr = picked.map(n => {
+    const deg = DEGREE[(n.pc - best.root + 12) % 12];
+    return `${FLAT[n.pc]}<span class="deg"> ${deg}</span>`;
+  }).join("&nbsp;&nbsp;");
+  addRow(rRows, "Notes", noteStr, true);
+  addRow(rRows, "Voicing", voicing);
+  addMutedRow(rRows);
+
+  // alternative interpretations
+  const alts = matches.slice(1, 4).map(m => {
+    const bIv = (bass.pc - m.root + 12) % 12;
+    const bIdx = m.chord.iv.indexOf(bIv);
+    return `${FLAT[m.root]}${m.chord.sym} (${INVERSION[bIdx]})`;
+  });
+  if (alts.length) {
+    rAlt.innerHTML = "Also reads as: " + alts.join(" &middot; ");
+    rAlt.classList.remove("hidden");
+  }
+}
+
+function addRow(parent, k, v, isHtml = false) {
+  const row = document.createElement("div");
+  row.className = "chord-row";
+  const kk = document.createElement("span"); kk.className = "k"; kk.textContent = k;
+  const vv = document.createElement("span"); vv.className = "v";
+  if (isHtml) vv.innerHTML = v; else vv.textContent = v;
+  row.append(kk, vv);
+  parent.appendChild(row);
+}
+
+function addMutedRow(parent) {
+  if (!muted.size) return;
+  const ord = ["1st","2nd","3rd","4th","5th","6th"];
+  const names = [...muted].sort((a, b) => a - b).map(i => ord[6 - i - 1]);
+  addRow(parent, "Muted", names.join(", ") + " string" + (names.length > 1 ? "s" : ""));
+}
+
+// ---------- Render & toggles ----------
+function render() {
+  svg.textContent = "";
+  drawBoard();
+  if (showMarkers) drawMarkers();
+  drawNotes();
+  drawMutes();
+  updateReadout();
+}
+
+document.getElementById("btnMarker").onclick = (e) => {
+  showMarkers = !showMarkers;
+  e.currentTarget.setAttribute("aria-pressed", String(showMarkers));
+  render();
+};
+document.getElementById("btnClear").onclick = () => { selection.clear(); muted.clear(); render(); };
+
+// Right-click a string to mark it muted (not played)
+const VB_W = 400, VB_H = 620;
+svg.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  const rect = svg.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (VB_W / rect.width);
+  const y = (e.clientY - rect.top)  * (VB_H / rect.height);
+  if (x < boardL || x > boardR) return;
+  if (y < TOP - 70 || y > boardB) return;
+  toggleMute(Math.max(0, Math.min(5, Math.round((x - LEFT) / COL))));
+});
+
+render();
+</script>
+</body>
+</html>
