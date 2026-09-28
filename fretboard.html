@@ -54,6 +54,7 @@
   .fret-num { font-size: 13px; fill: #6f665a; font-weight: 600; }
   .open-label { font-size: 13px; fill: #6f665a; font-weight: 600; }
   .note-text { font-size: 13px; font-weight: 700; fill: var(--ink); pointer-events: none; }
+  .note-text.enh { font-size: 9px; letter-spacing: -.2px; }
   .note-dot { fill: var(--note); stroke: #c2c2c2; stroke-width: 1; cursor: pointer; }
   .note-dot:hover { stroke: var(--accent-dark); stroke-width: 2; }
   .note-dot.sel { fill: var(--accent); stroke: var(--accent-dark); stroke-width: 2; }
@@ -83,6 +84,7 @@
   <div class="controls">
     <span class="pill">Note names</span>
     <button id="btnMarker" aria-pressed="true">Fret markers</button>
+    <button id="btnEnh" aria-pressed="false">Enharmonics</button>
     <button id="btnClear" class="ghost">Clear</button>
   </div>
 
@@ -177,6 +179,7 @@ const el = (name, attrs = {}, parent = svg) => {
 const selection = new Map();   // stringIndex -> fret (strings being played)
 const muted = new Set();       // stringIndex -> not played (right-click)
 let showMarkers = true;
+let showEnharmonics = false;
 
 // ---------- Static fretboard ----------
 function drawBoard() {
@@ -233,17 +236,28 @@ function drawNotes() {
       const cx = xOf(i);
       const cy = f === 0 ? TOP - NUT - 20 : yOf(f) - FRET_H / 2;
       const isSel = selection.get(i) === f;
-      const dot = el("circle", { cx, cy, r: 11, class: "note-dot" + (isSel ? " sel" : "") }, g);
-      el("text", { x: cx, y: cy + 4.5, "text-anchor": "middle", class: "note-text" }, g)
-        .textContent = noteLabel(i, f);
+      const names = noteNames(i, f);
+      const twoLines = showEnharmonics && names.length > 1;
+      const r = twoLines ? 12 : 11;
+      const dot = el("circle", { cx, cy, r, class: "note-dot" + (isSel ? " sel" : "") }, g);
+      if (twoLines) {
+        el("text", { x: cx, y: cy - 1.5, "text-anchor": "middle", class: "note-text enh" }, g)
+          .textContent = names[0];
+        el("text", { x: cx, y: cy + 8, "text-anchor": "middle", class: "note-text enh" }, g)
+          .textContent = names[1];
+      } else {
+        el("text", { x: cx, y: cy + 4.5, "text-anchor": "middle", class: "note-text" }, g)
+          .textContent = names[0];
+      }
       dot.addEventListener("click", () => toggleNote(i, f));
     }
   }
 }
 
-function noteLabel(i, f) {
+// Enharmonic spellings for a position: [name] for naturals, [sharp, flat] for accidentals.
+function noteNames(i, f) {
   const n = STRINGS[i][f];
-  return n.includes("#") ? FLAT[SHARP.indexOf(n)] : n;
+  return n.includes("#") ? [n, FLAT[SHARP.indexOf(n)]] : [n];
 }
 
 // ---------- Interaction ----------
@@ -405,6 +419,11 @@ function render() {
 document.getElementById("btnMarker").onclick = (e) => {
   showMarkers = !showMarkers;
   e.currentTarget.setAttribute("aria-pressed", String(showMarkers));
+  render();
+};
+document.getElementById("btnEnh").onclick = (e) => {
+  showEnharmonics = !showEnharmonics;
+  e.currentTarget.setAttribute("aria-pressed", String(showEnharmonics));
   render();
 };
 document.getElementById("btnClear").onclick = () => { selection.clear(); muted.clear(); render(); };

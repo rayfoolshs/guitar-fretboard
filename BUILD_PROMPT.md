@@ -57,6 +57,9 @@ CSS custom properties on `:root`:
 - A controls row containing:
   - A static "Note names" pill (label, not interactive)
   - A "Fret markers" toggle button (`aria-pressed="true"` by default)
+  - An "Enharmonics" toggle button (`aria-pressed="false"` by default) that,
+    when on, spells accidentals with both names (sharp over flat, e.g. `A#`/`Bb`)
+    on each note dot; naturals stay single-line
   - A "Clear" ghost button
 - A card containing the SVG fretboard
 - A readout card showing chord analysis (see below)
@@ -105,8 +108,9 @@ Draw, in order:
    accent fill + accent-dark stroke (`.note-dot.sel`).
 9. **Mutes**: a grey "×" (`#8a8175`, 2.5px strokes) above each muted string
 
-Note labels use flats for accidentals: map `#` names through
-`FLAT = ["C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B"]`.
+Note labels use flats for accidentals by default
+(`FLAT = ["C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B"]`); in
+enharmonic mode, accidentals render both spellings stacked (sharp above flat).
 
 ## Interaction model
 
@@ -125,6 +129,8 @@ let showMarkers = true;
   to the nearest string index. Ignore clicks outside the board bounds.
 - **Clear**: empty `selection` and `muted`.
 - **Fret markers**: toggle the marker dots and update `aria-pressed`.
+- **Enharmonics**: toggle the note labels between single-name (flat) and
+  dual-name (sharp over flat) spelling; update `aria-pressed`.
 
 Re-render the whole board on every state change.
 
