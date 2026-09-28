@@ -84,7 +84,6 @@
   <div class="controls">
     <span class="pill">Note names</span>
     <button id="btnMarker" aria-pressed="true">Fret markers</button>
-    <button id="btnEnh" aria-pressed="false">Enharmonics</button>
     <button id="btnClear" class="ghost">Clear</button>
   </div>
 
@@ -179,7 +178,6 @@ const el = (name, attrs = {}, parent = svg) => {
 const selection = new Map();   // stringIndex -> fret (strings being played)
 const muted = new Set();       // stringIndex -> not played (right-click)
 let showMarkers = true;
-let showEnharmonics = false;
 
 // ---------- Static fretboard ----------
 function drawBoard() {
@@ -237,7 +235,7 @@ function drawNotes() {
       const cy = f === 0 ? TOP - NUT - 20 : yOf(f) - FRET_H / 2;
       const isSel = selection.get(i) === f;
       const names = noteNames(i, f);
-      const twoLines = showEnharmonics && names.length > 1;
+      const twoLines = names.length > 1;
       const r = twoLines ? 12 : 11;
       const dot = el("circle", { cx, cy, r, class: "note-dot" + (isSel ? " sel" : "") }, g);
       if (twoLines) {
@@ -419,11 +417,6 @@ function render() {
 document.getElementById("btnMarker").onclick = (e) => {
   showMarkers = !showMarkers;
   e.currentTarget.setAttribute("aria-pressed", String(showMarkers));
-  render();
-};
-document.getElementById("btnEnh").onclick = (e) => {
-  showEnharmonics = !showEnharmonics;
-  e.currentTarget.setAttribute("aria-pressed", String(showEnharmonics));
   render();
 };
 document.getElementById("btnClear").onclick = () => { selection.clear(); muted.clear(); render(); };
