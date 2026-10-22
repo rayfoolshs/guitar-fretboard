@@ -23,12 +23,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # fretboard.html stays the documented deliverable in the repo, but it is
-      # served as index.html so the site root works without a redirect.
+      # fretboard.html stays the documented deliverable in the repo. It is
+      # served as index.html so the site root works without a redirect, and
+      # also under its own name so either URL works.
       - name: Assemble site (fretboard.html as the site root)
         run: |
           mkdir -p _site
           cp fretboard.html _site/index.html
+          cp fretboard.html _site/fretboard.html
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
